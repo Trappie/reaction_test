@@ -98,7 +98,33 @@ HTML = """<!DOCTYPE html>
 
         /* ── All squares start grey ── */
         #square1, #square2, #square3, #square4, #square5 { background: #444; }
-        #result1, #result2, #result3, #result4, #result5 { color: #e94560; }
+        #result1, #result2, #result3, #result4, #result5,
+        #result6, #result7 { color: #e94560; }
+
+        /* ── Key boxes (tabs 6 & 7) ── */
+        .key-area {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+            cursor: pointer;
+        }
+        .key-boxes {
+            display: flex;
+            gap: 12px;
+        }
+        .key-box {
+            width: 100px;
+            height: 100px;
+            background: #444;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #666;
+            /* no transition — instant color change for accuracy */
+        }
 
         /* No-go window bar — red = no-go across all tabs */
         .nogo-bar-wrap {
@@ -124,6 +150,8 @@ HTML = """<!DOCTYPE html>
     <button class="tab-btn"        data-tab="gonogo"   onclick="switchTab(this)">Go / No-Go</button>
     <button class="tab-btn"        data-tab="triple"   onclick="switchTab(this)">Triple Choice</button>
     <button class="tab-btn"        data-tab="reflex"   onclick="switchTab(this)">Reflex Triple</button>
+    <button class="tab-btn"        data-tab="keytest"  onclick="switchTab(this)">Key Test</button>
+    <button class="tab-btn"        data-tab="reflexkey" onclick="switchTab(this)">Reflex Keys</button>
 </div>
 
 <!-- ══ Tab 1 ══ -->
@@ -175,6 +203,39 @@ HTML = """<!DOCTYPE html>
     <div class="hint">Random delay, no countdown — recorded on pointerdown</div>
 </div>
 
+<!-- ══ Tab 6: key test with countdown (DFJK / no-go) ══ -->
+<div id="tab-keytest" class="tab-content panel">
+    <div id="cd6" class="countdown-num">–</div>
+    <div id="keyarea6" class="key-area">
+        <div class="key-boxes">
+            <div class="key-box" id="kb6d">D</div>
+            <div class="key-box" id="kb6f">F</div>
+            <div class="key-box" id="kb6j">J</div>
+            <div class="key-box" id="kb6k">K</div>
+        </div>
+        <div class="nogo-bar-wrap"><div id="nogo-bar6" class="nogo-bar-fill"></div></div>
+    </div>
+    <div id="result6" class="result-display"></div>
+    <div id="status6" class="status-line">Click the boxes to start</div>
+    <div class="hint">Countdown — one box lights up, or all red = don't press — keydown recorded immediately</div>
+</div>
+
+<!-- ══ Tab 7: reflex key test no countdown (DFJK / no-go) ══ -->
+<div id="tab-reflexkey" class="tab-content panel">
+    <div id="keyarea7" class="key-area">
+        <div class="key-boxes">
+            <div class="key-box" id="kb7d">D</div>
+            <div class="key-box" id="kb7f">F</div>
+            <div class="key-box" id="kb7j">J</div>
+            <div class="key-box" id="kb7k">K</div>
+        </div>
+        <div class="nogo-bar-wrap"><div id="nogo-bar7" class="nogo-bar-fill"></div></div>
+    </div>
+    <div id="result7" class="result-display"></div>
+    <div id="status7" class="status-line">Click the boxes to start</div>
+    <div class="hint">Random delay — one box lights up, or all red = don't press — keydown recorded immediately</div>
+</div>
+
 <!-- ══ Tab 4: blue=left / yellow=right / red=no-go ══ -->
 <div id="tab-triple" class="tab-content panel">
     <div id="cd4" class="countdown-num">–</div>
@@ -202,8 +263,17 @@ function switchTab(btn) {
 }
 
 const S = { IDLE: 0, WAITING: 1, READY: 2, DONE: 3 };
-const COLORS = { blue: '#2277ff', yellow: '#ffcc00', red: '#cc2200' };
+const COLORS = {
+    blue: '#2277ff', yellow: '#ffcc00', red: '#cc2200',
+    d: '#00bb55', f: '#ff8800', j: '#cc44ff', k: '#00cccc'
+};
 const NOGO_WINDOW = 1000;
+const KEY_OPTS = ['d', 'f', 'j', 'k', 'nogo'];
+const KEY_MAP  = { KeyD: 'd', KeyF: 'f', KeyJ: 'j', KeyK: 'k' };
+
+function fmtMs(ms) {
+    return ms + ' ms  (' + Math.round(ms * 60 / 1000) + ' f)';
+}
 
 // ─────────────────────────────────────────────
 // Shared: drift-corrected countdown → rAF color flip
@@ -279,7 +349,7 @@ function t1Start() {
 function t1React() {
     const end = performance.now();
     if (state1 === S.READY) {
-        result1.textContent = Math.round(end - t1start) + ' ms';
+        result1.textContent = fmtMs(Math.round(end - t1start));
         status1.textContent = 'Click or Space to try again';
         sq1.style.background = '#444';
         state1 = S.DONE;
@@ -329,7 +399,7 @@ function t2React(button) {
         const correct = (button === 0 && t2target === 'blue') || (button === 2 && t2target === 'yellow');
         const ms = Math.round(end - t2start);
         result2.style.color = correct ? '#00cc44' : '#e94560';
-        result2.textContent = ms + ' ms' + (correct ? '  ✓' : '  ✗ wrong button');
+        result2.textContent = fmtMs(ms) + (correct ? '  ✓' : '  ✗ wrong button');
         status2.textContent = 'Click to try again';
         sq2.style.background = '#444'; cd2El.textContent = '–';
         state2 = S.DONE;
@@ -392,10 +462,10 @@ function t3React(button) {
         let correct, msg;
         if (t3target === 'blue') {
             correct = button === 0;
-            msg = correct ? ms + ' ms  ✓' : ms + ' ms  ✗ use left click';
+            msg = fmtMs(ms) + (correct ? '  ✓' : '  ✗ use left click');
         } else {
             correct = false;
-            msg = ms + ' ms  ✗ should not press';
+            msg = fmtMs(ms) + '  ✗ should not press';
         }
         result3.style.color = correct ? '#00cc44' : '#e94560';
         result3.textContent = msg;
@@ -462,13 +532,13 @@ function t4React(button) {
         let correct, msg;
         if (t4target === 'blue') {
             correct = button === 0;
-            msg = correct ? ms + ' ms  ✓' : ms + ' ms  ✗ use left click';
+            msg = fmtMs(ms) + (correct ? '  ✓' : '  ✗ use left click');
         } else if (t4target === 'yellow') {
             correct = button === 2;
-            msg = correct ? ms + ' ms  ✓' : ms + ' ms  ✗ use right click';
+            msg = fmtMs(ms) + (correct ? '  ✓' : '  ✗ use right click');
         } else {
             correct = false;
-            msg = ms + ' ms  ✗ should not press';
+            msg = fmtMs(ms) + '  ✗ should not press';
         }
         result4.style.color = correct ? '#00cc44' : '#e94560';
         result4.textContent = msg;
@@ -539,13 +609,13 @@ function t5React(button) {
         let correct, msg;
         if (t5target === 'blue') {
             correct = button === 0;
-            msg = correct ? ms + ' ms  ✓' : ms + ' ms  ✗ use left click';
+            msg = fmtMs(ms) + (correct ? '  ✓' : '  ✗ use left click');
         } else if (t5target === 'yellow') {
             correct = button === 2;
-            msg = correct ? ms + ' ms  ✓' : ms + ' ms  ✗ use right click';
+            msg = fmtMs(ms) + (correct ? '  ✓' : '  ✗ use right click');
         } else {
             correct = false;
-            msg = ms + ' ms  ✗ should not press';
+            msg = fmtMs(ms) + '  ✗ should not press';
         }
         result5.style.color = correct ? '#00cc44' : '#e94560';
         result5.textContent = msg;
@@ -560,6 +630,191 @@ function t5React(button) {
 
 sq5.addEventListener('contextmenu', e => e.preventDefault());
 sq5.addEventListener('pointerdown', e => { e.preventDefault(); (state5 === S.IDLE || state5 === S.DONE) ? t5Start() : t5React(e.button); });
+
+// ─────────────────────────────────────────────
+// Shared helpers for tabs 6 & 7
+// ─────────────────────────────────────────────
+function lightBoxes(kb, target) {
+    // target: 'd'|'f'|'j'|'k' → one lights up; 'nogo' → all red; null → all grey
+    for (const [key, el] of Object.entries(kb)) {
+        if (target === null) {
+            el.style.background = '#444'; el.style.color = '#666';
+        } else if (target === 'nogo') {
+            el.style.background = COLORS.red; el.style.color = '#eee';
+        } else if (key === target) {
+            el.style.background = COLORS[key]; el.style.color = '#eee';
+        } else {
+            el.style.background = '#444'; el.style.color = '#666';
+        }
+    }
+}
+
+function keyReactResult(key, end, target, tstart) {
+    const ms = Math.round(end - tstart);
+    let correct, msg;
+    if (target === 'nogo') {
+        correct = false;
+        msg = fmtMs(ms) + '  ✗ should not press';
+    } else {
+        correct = (key === target);
+        msg = correct ? fmtMs(ms) + '  ✓' : fmtMs(ms) + '  ✗ press ' + target.toUpperCase();
+    }
+    return { correct, msg };
+}
+
+// ─────────────────────────────────────────────
+// Tab 6 — Key Test with countdown
+// ─────────────────────────────────────────────
+const KB6 = { d: document.getElementById('kb6d'), f: document.getElementById('kb6f'),
+               j: document.getElementById('kb6j'), k: document.getElementById('kb6k') };
+let state6 = S.IDLE, t6start = null, t6target = null, t6cd = null, t6nogoTimer = null;
+const result6 = document.getElementById('result6');
+const status6 = document.getElementById('status6');
+const cd6El   = document.getElementById('cd6');
+const bar6    = makeBar(document.getElementById('nogo-bar6'));
+
+function t6Cleanup() {
+    bar6.stop(); clearTimeout(t6nogoTimer); t6nogoTimer = null;
+    lightBoxes(KB6, null); cd6El.textContent = '–'; t6target = null;
+}
+
+function t6Start() {
+    state6 = S.WAITING;
+    result6.textContent = ''; result6.style.color = '#e94560';
+    status6.textContent = 'Get ready…';
+    t6Cleanup();
+    t6cd = runCountdown(cd6El, 3000, (stamp) => {
+        t6target = KEY_OPTS[Math.floor(Math.random() * KEY_OPTS.length)];
+        lightBoxes(KB6, t6target);
+        t6start = stamp;
+        state6 = S.READY;
+        if (t6target === 'nogo') {
+            status6.textContent = "All red — don't press!";
+            bar6.start(NOGO_WINDOW);
+            t6nogoTimer = setTimeout(() => {
+                bar6.stop();
+                result6.style.color = '#00cc44'; result6.textContent = 'Correct  ✓';
+                status6.textContent = 'Click boxes to try again';
+                t6Cleanup(); state6 = S.DONE;
+            }, NOGO_WINDOW);
+        } else {
+            status6.textContent = t6target.toUpperCase() + ' key!';
+        }
+    });
+}
+
+function t6HandleKey(key, end) {
+    if (state6 === S.READY) {
+        clearTimeout(t6nogoTimer); bar6.stop();
+        const { correct, msg } = keyReactResult(key, end, t6target, t6start);
+        result6.style.color = correct ? '#00cc44' : '#e94560';
+        result6.textContent = msg;
+        status6.textContent = 'Click boxes to try again';
+        t6Cleanup(); state6 = S.DONE;
+    } else if (state6 === S.WAITING) {
+        t6cd && t6cd.cancel();
+        result6.textContent = ''; status6.textContent = 'Too early! Click boxes to retry';
+        t6Cleanup(); state6 = S.IDLE;
+    }
+}
+
+document.getElementById('keyarea6').addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (state6 === S.IDLE || state6 === S.DONE) t6Start();
+});
+
+// ─────────────────────────────────────────────
+// Tab 7 — Reflex Key Test (no countdown)
+// ─────────────────────────────────────────────
+const KB7 = { d: document.getElementById('kb7d'), f: document.getElementById('kb7f'),
+               j: document.getElementById('kb7j'), k: document.getElementById('kb7k') };
+let state7 = S.IDLE, t7start = null, t7target = null, t7timer = null, t7nogoTimer = null;
+const result7 = document.getElementById('result7');
+const status7 = document.getElementById('status7');
+const bar7    = makeBar(document.getElementById('nogo-bar7'));
+
+function t7Cleanup() {
+    bar7.stop(); clearTimeout(t7nogoTimer); t7nogoTimer = null;
+    lightBoxes(KB7, null); t7target = null;
+}
+
+function t7Start() {
+    state7 = S.WAITING;
+    clearTimeout(t7timer);
+    t7Cleanup();
+    result7.textContent = ''; result7.style.color = '#e94560';
+    status7.textContent = 'Wait…';
+    t7timer = setTimeout(() => {
+        requestAnimationFrame(() => {
+            t7target = KEY_OPTS[Math.floor(Math.random() * KEY_OPTS.length)];
+            lightBoxes(KB7, t7target);
+            t7start = performance.now();
+            state7 = S.READY;
+            if (t7target === 'nogo') {
+                status7.textContent = "All red — don't press!";
+                bar7.start(NOGO_WINDOW);
+                t7nogoTimer = setTimeout(() => {
+                    bar7.stop();
+                    result7.style.color = '#00cc44'; result7.textContent = 'Correct  ✓';
+                    status7.textContent = 'Click boxes to try again';
+                    t7Cleanup(); state7 = S.DONE;
+                }, NOGO_WINDOW);
+            } else {
+                status7.textContent = t7target.toUpperCase() + ' key!';
+            }
+        });
+    }, 2000 + Math.random() * 3000);
+}
+
+function t7HandleKey(key, end) {
+    if (state7 === S.READY) {
+        clearTimeout(t7nogoTimer); bar7.stop();
+        const { correct, msg } = keyReactResult(key, end, t7target, t7start);
+        result7.style.color = correct ? '#00cc44' : '#e94560';
+        result7.textContent = msg;
+        status7.textContent = 'Click boxes to try again';
+        t7Cleanup(); state7 = S.DONE;
+    } else if (state7 === S.WAITING) {
+        clearTimeout(t7timer);
+        result7.textContent = ''; status7.textContent = 'Too early! Click boxes to retry';
+        t7Cleanup(); state7 = S.IDLE;
+    }
+}
+
+document.getElementById('keyarea7').addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (state7 === S.IDLE || state7 === S.DONE) t7Start();
+});
+
+// ─────────────────────────────────────────────
+// Global keydown handler for tabs 6 & 7 (Space / D/F/J/K)
+// performance.now() recorded as the very first line
+// ─────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+    const end = performance.now();
+
+    const tab6active = document.getElementById('tab-keytest').classList.contains('active');
+    const tab7active = document.getElementById('tab-reflexkey').classList.contains('active');
+    if (!tab6active && !tab7active) return;
+
+    // Space starts the test from IDLE / DONE
+    if (e.code === 'Space') {
+        e.preventDefault();
+        if (tab6active && (state6 === S.IDLE || state6 === S.DONE)) t6Start();
+        if (tab7active && (state7 === S.IDLE || state7 === S.DONE)) t7Start();
+        return;
+    }
+
+    const key = KEY_MAP[e.code];
+    if (!key) return;
+    e.preventDefault();
+
+    if (tab6active) {
+        (state6 === S.IDLE || state6 === S.DONE) ? t6Start() : t6HandleKey(key, end);
+    } else {
+        (state7 === S.IDLE || state7 === S.DONE) ? t7Start() : t7HandleKey(key, end);
+    }
+});
 </script>
 </body>
 </html>"""
