@@ -97,9 +97,9 @@ HTML = """<!DOCTYPE html>
         .swatch { width: 18px; height: 18px; display: inline-block; vertical-align: middle; }
 
         /* ── All squares start grey ── */
-        #square1, #square2, #square3, #square4, #square5 { background: #444; }
+        #square1, #square2, #square3, #square4, #square5, #square8 { background: #444; }
         #result1, #result2, #result3, #result4, #result5,
-        #result6, #result7 { color: #e94560; }
+        #result6, #result7, #result8 { color: #e94560; }
 
         /* ── Key boxes (tabs 6 & 7) ── */
         .key-area {
@@ -151,7 +151,8 @@ HTML = """<!DOCTYPE html>
     <button class="tab-btn"        data-tab="triple"   onclick="switchTab(this)">Triple Choice</button>
     <button class="tab-btn"        data-tab="reflex"   onclick="switchTab(this)">Reflex Triple</button>
     <button class="tab-btn"        data-tab="keytest"  onclick="switchTab(this)">Key Test</button>
-    <button class="tab-btn"        data-tab="reflexkey" onclick="switchTab(this)">Reflex Keys</button>
+    <button class="tab-btn"        data-tab="reflexkey"  onclick="switchTab(this)">Reflex Keys</button>
+    <button class="tab-btn"        data-tab="frameclick" onclick="switchTab(this)">Frame Click</button>
 </div>
 
 <!-- ══ Tab 1 ══ -->
@@ -249,6 +250,20 @@ HTML = """<!DOCTYPE html>
         <span><span class="swatch" style="background:#cc2200"></span> Red → Don't click (1 s)</span>
     </div>
     <div class="hint">Recorded on pointerdown — right-click context menu suppressed</div>
+</div>
+
+<!-- ══ Tab 8: Frame Click — 6f delay, 25f window, blue/red=left, yellow=right ══ -->
+<div id="tab-frameclick" class="tab-content panel">
+    <div id="square8" class="square"></div>
+    <div class="nogo-bar-wrap"><div id="nogo-bar8" class="nogo-bar-fill"></div></div>
+    <div id="result8" class="result-display"></div>
+    <div id="status8" class="status-line">Left click the square to start</div>
+    <div class="legend">
+        <span><span class="swatch" style="background:#2277ff"></span> Blue → Left click</span>
+        <span><span class="swatch" style="background:#ffcc00"></span> Yellow → Right click</span>
+        <span><span class="swatch" style="background:#cc2200"></span> Red → Left click</span>
+    </div>
+    <div class="hint">Color appears 6 frames after click — respond within 25 frames</div>
 </div>
 
 <script>
@@ -814,6 +829,158 @@ document.addEventListener('keydown', e => {
     } else {
         (state7 === S.IDLE || state7 === S.DONE) ? t7Start() : t7HandleKey(key, end);
     }
+});
+
+// ─────────────────────────────────────────────
+// Tab 8 — Frame Click  (FSM)
+//   A : left-click → wait 6f → color appears → 25f window
+//         red   + correct → A (loop)
+//         blue  + correct → B
+//         yellow+ correct → S (success)
+//         wrong / slow    → T (fail)
+//   B : left-click within 30f → C,  else → T
+//   C : Space       within 30f → S,  else → T
+// ─────────────────────────────────────────────
+const T8_FRAME_MS  = 1000 / 60;
+const T8_WIN_A_MS  = Math.round(25 * T8_FRAME_MS);   // ~417 ms
+const T8_WIN_BC_MS = Math.round(30 * T8_FRAME_MS);   // ~500 ms
+const T8_OPTS      = ['blue', 'yellow', 'red'];
+
+const PH8 = { IDLE: 0, A_WAIT: 1, A_READY: 2, B: 3, C: 4, SUCCESS: 5, FAIL: 6 };
+let t8phase  = PH8.IDLE;
+let t8target = null, t8start = null, t8rafId = null, t8tmout = null;
+
+const sq8     = document.getElementById('square8');
+const result8 = document.getElementById('result8');
+const status8 = document.getElementById('status8');
+const bar8    = makeBar(document.getElementById('nogo-bar8'));
+
+// Chain n rAF calls; overwrites t8rafId each time so cancel always works
+function t8WaitFrames(n, cb) {
+    if (n <= 0) { cb(); return; }
+    t8rafId = requestAnimationFrame(() => t8WaitFrames(n - 1, cb));
+}
+
+function t8CancelAll() {
+    cancelAnimationFrame(t8rafId); t8rafId = null;
+    clearTimeout(t8tmout); t8tmout = null;
+    bar8.stop();
+}
+
+function t8StartTimer(ms, onExpire) {
+    bar8.start(ms);
+    t8tmout = setTimeout(onExpire, ms);
+}
+
+function t8Fail(msg) {
+    t8CancelAll();
+    sq8.style.background = COLORS.red;
+    result8.style.color = '#e94560'; result8.textContent = msg;
+    status8.textContent = 'Left click to start over';
+    t8phase = PH8.FAIL;
+}
+
+function t8Succeed(msg) {
+    t8CancelAll();
+    sq8.style.background = '#00cc44';
+    result8.style.color = '#00cc44'; result8.textContent = msg;
+    status8.textContent = 'SUCCESS!  Left click to start over';
+    t8phase = PH8.SUCCESS;
+}
+
+// ── Enter state A ──
+function t8EnterA() {
+    t8CancelAll();
+    sq8.style.background = '#333';
+    status8.textContent = 'Wait…';
+    t8phase = PH8.A_WAIT;
+    t8WaitFrames(6, () => {
+        result8.textContent = '';
+        t8target = T8_OPTS[Math.floor(Math.random() * 3)];
+        sq8.style.background = COLORS[t8target];
+        t8start = performance.now();
+        t8phase = PH8.A_READY;
+        status8.textContent = t8target === 'yellow' ? 'YELLOW — Right click!'
+                            : (t8target === 'blue'  ? 'BLUE — Left click!'
+                                                    : 'RED — Left click!');
+        t8StartTimer(T8_WIN_A_MS, () => t8Fail('Too slow!'));
+    });
+}
+
+// ── Enter state B (follow-up left click after blue) ──
+function t8EnterB() {
+    t8CancelAll();
+    sq8.style.background = COLORS.blue;
+    status8.textContent = 'B — Left click to confirm!';
+    t8start = performance.now();
+    t8phase = PH8.B;
+    t8StartTimer(T8_WIN_BC_MS, () => t8Fail('Too slow in B!'));
+}
+
+// ── Enter state C (Space after B) ──
+function t8EnterC() {
+    t8CancelAll();
+    sq8.style.background = '#aa44ff';
+    status8.textContent = 'C — Press Space!';
+    t8start = performance.now();
+    t8phase = PH8.C;
+    t8StartTimer(T8_WIN_BC_MS, () => t8Fail('Too slow in C!'));
+}
+
+sq8.addEventListener('contextmenu', e => e.preventDefault());
+sq8.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const now = performance.now();
+
+    // Terminal / idle states: left click restarts
+    if (t8phase === PH8.IDLE || t8phase === PH8.SUCCESS || t8phase === PH8.FAIL) {
+        if (e.button === 0) { result8.textContent = ''; result8.style.color = '#e94560'; t8EnterA(); }
+        return;
+    }
+
+    // A_WAIT: any click = too early
+    if (t8phase === PH8.A_WAIT) {
+        t8CancelAll();
+        sq8.style.background = '#444';
+        result8.textContent = ''; status8.textContent = 'Too early! Left click to retry';
+        t8phase = PH8.IDLE;
+        return;
+    }
+
+    // A_READY: evaluate response
+    if (t8phase === PH8.A_READY) {
+        const ms = Math.round(now - t8start);
+        const correct = t8target === 'yellow' ? e.button === 2 : e.button === 0;
+        if (!correct) {
+            t8Fail(fmtMs(ms) + '  ✗ use ' + (t8target === 'yellow' ? 'right click' : 'left click'));
+            return;
+        }
+        t8CancelAll();
+        result8.style.color = '#00cc44'; result8.textContent = fmtMs(ms) + '  ✓';
+        sq8.style.background = '#444';
+        if      (t8target === 'yellow') t8Succeed(fmtMs(ms) + '  ✓');
+        else if (t8target === 'blue')   t8EnterB();
+        else                            t8EnterA();   // red → loop
+        return;
+    }
+
+    // B: left click advances to C; ignore other buttons
+    if (t8phase === PH8.B && e.button === 0) {
+        const ms = Math.round(now - t8start);
+        result8.style.color = '#00cc44'; result8.textContent = fmtMs(ms) + '  ✓';
+        t8EnterC();
+        return;
+    }
+    // phase C ignores all pointer events (waiting for Space only)
+});
+
+// Space handler for phase C
+document.addEventListener('keydown', e => {
+    if (!document.getElementById('tab-frameclick').classList.contains('active')) return;
+    if (t8phase !== PH8.C || e.code !== 'Space') return;
+    e.preventDefault();
+    const ms = Math.round(performance.now() - t8start);
+    t8Succeed(fmtMs(ms) + '  ✓');
 });
 </script>
 </body>
